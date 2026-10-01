@@ -1,0 +1,66 @@
+name: Build PotatoMod
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:   # lets you press "Run workflow" manually in the Actions tab
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Old GTNH template = ForgeGradle 1.2 (needs Java 8, plus setupCIWorkspace).
+      # Newer GTNH template = RetroFuturaGradle (Gradle runs on Java 17, compiles for Java 8).
+      - name: Detect build system
+        id: detect
+        run: |
+          if grep -qi "ForgeGradle" build.gradle 2>/dev/null; then
+            echo "legacy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "legacy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up JDK 8 (ForgeGradle 1.2 template)
+        if: steps.detect.outputs.legacy == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: gradle
+
+      - name: Set up JDK 8 + 17 (RetroFuturaGradle template)
+        if: steps.detect.outputs.legacy != 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            17
+          cache: gradle
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Set up workspace (ForgeGradle 1.2 template only)
+        if: steps.detect.outputs.legacy == 'true'
+        run: ./gradlew setupCIWorkspace
+
+      - name: Build the mod
+        run: ./gradlew build --stacktrace
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: PotatoMod-jar
+          path: |
+            build/libs/*.jar
+            !build/libs/*-sources.jar
+            !build/libs/*-dev.jar
+          if-no-files-found: error
+          
